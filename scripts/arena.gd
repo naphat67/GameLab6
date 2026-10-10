@@ -7,14 +7,20 @@ var player: CharacterBody3D
 var rig: Node3D
 var animation_player: AnimationPlayer
 var camera: Camera3D
+var skeleton: Skeleton3D
 var swing_time := 0.0
 var attack_cooldown := 0.0
+var action_mode := "Idle"
+var action_time := 0.0
+var walk_button_active := false
+var action_tween: Tween
 var target_nodes: Array[Node3D] = []
 var target_hp: Array[int] = []
 var hit_count := 0
 var status_label: Label
 var hp_label: Label
 var hint_label: Label
+var action_label: Label
 
 func _ready() -> void:
 	_ready_input_map()
@@ -30,13 +36,29 @@ func _process(delta: float) -> void:
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	if swing_time > 0.0:
 		swing_time = maxf(0.0, swing_time - delta)
-	else:
+	if action_mode == "Jump":
+		action_time = maxf(0.0, action_time - delta)
+		if action_time <= 0.0:
+			_set_action("Idle")
+	elif action_mode == "Walk":
+		if animation_player.current_animation != "Locomotion":
+			animation_player.play("Locomotion")
+		var moving := Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"), Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")).length() > 0.1
+		if not moving and not walk_button_active:
+			_set_action("Idle")
+	elif action_mode == "Slash":
+		if swing_time <= 0.0:
+			_set_action("Idle")
+	elif action_mode == "Idle":
 		var moving := Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"), Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")).length() > 0.1
 		var desired_animation := "Locomotion" if moving else "Idle"
 		if animation_player.current_animation != desired_animation:
 			animation_player.play(desired_animation)
-		if Input.is_action_just_pressed("attack") and attack_cooldown <= 0.0:
-			_start_attack()
+		if moving:
+			action_mode = "Walk"
+			walk_button_active = false
+	if Input.is_action_just_pressed("attack") and attack_cooldown <= 0.0:
+		_start_attack()
 	_update_hud()
 
 
@@ -48,6 +70,12 @@ func _physics_process(_delta: float) -> void:
 	)
 	if input_dir.length() > 1.0:
 		input_dir = input_dir.normalized()
+	if action_mode == "Sit" or action_mode == "Lie":
+		if input_dir.length() > 0.08:
+			_set_action("Walk")
+		else:
+			player.velocity = Vector3.ZERO
+			return
 	player.velocity.x = input_dir.x * PLAYER_SPEED
 	player.velocity.z = input_dir.z * PLAYER_SPEED
 	if input_dir.length() > 0.08:
@@ -168,9 +196,11 @@ func _build_player_from_blender_model() -> void:
 	character_model.name = "AstraCharacter"
 	rig.add_child(character_model)
 	animation_player = _find_animation_player(character_model)
+	skeleton = _find_skeleton(character_model)
 	if animation_player == null:
 		push_error("The Astra character is missing its AnimationPlayer.")
 	else:
+		_create_pose_animations()
 		animation_player.play("Idle")
 	_add_ring(rig, Vector3(0.0, 0.08, 0.0), 0.7, 0.75, Color("b4dfdf", 0.36))
 
@@ -183,6 +213,70 @@ func _find_animation_player(node: Node) -> AnimationPlayer:
 		if found != null:
 			return found
 	return null
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _create_pose_animations() -> void:
+	if animation_player == null or skeleton == null:
+		return
+	animation_player.get_animation("Locomotion").loop_mode = Animation.LOOP_LINEAR
+	var library := animation_player.get_animation_library("")
+	var sit := _build_pose_animation("Pose_Sit", {
+		"mixamorig_LeftUpLeg": Vector3(-0.95, 0.0, 0.0),
+		"mixamorig_RightUpLeg": Vector3(-0.95, 0.0, 0.0),
+		"mixamorig_LeftLeg": Vector3(1.45, 0.0, 0.0),
+		"mixamorig_RightLeg": Vector3(1.45, 0.0, 0.0),
+		"mixamorig_LeftArm": Vector3(-0.18, 0.0, -0.18),
+		"mixamorig_RightArm": Vector3(-0.18, 0.0, 0.18),
+		"mixamorig_LeftForeArm": Vector3(-0.55, 0.0, 0.0),
+		"mixamorig_RightForeArm": Vector3(-0.55, 0.0, 0.0),
+		"mixamorig_Spine": Vector3(0.12, 0.0, 0.0),
+	}, 0.65)
+	var lie := _build_pose_animation("Pose_Lie", {
+		"mixamorig_Hips": Vector3(0.0, 0.0, 1.48),
+		"mixamorig_LeftArm": Vector3(0.0, 0.0, -0.62),
+		"mixamorig_RightArm": Vector3(0.0, 0.0, 0.62),
+		"mixamorig_LeftUpLeg": Vector3(0.15, 0.0, -0.12),
+		"mixamorig_RightUpLeg": Vector3(-0.15, 0.0, 0.12),
+	}, 0.65)
+	var jump := _build_pose_animation("Pose_Jump", {
+		"mixamorig_LeftUpLeg": Vector3(-0.42, 0.0, 0.0),
+		"mixamorig_RightUpLeg": Vector3(-0.42, 0.0, 0.0),
+		"mixamorig_LeftLeg": Vector3(0.72, 0.0, 0.0),
+		"mixamorig_RightLeg": Vector3(0.72, 0.0, 0.0),
+		"mixamorig_LeftArm": Vector3(-1.7, 0.0, -0.25),
+		"mixamorig_RightArm": Vector3(-1.7, 0.0, 0.25),
+	}, 0.72)
+	if library != null:
+		library.add_animation("Pose_Sit", sit)
+		library.add_animation("Pose_Lie", lie)
+		library.add_animation("Pose_Jump", jump)
+
+
+func _build_pose_animation(animation_name: String, offsets: Dictionary, duration: float) -> Animation:
+	var animation := Animation.new()
+	animation.resource_name = animation_name
+	animation.length = duration
+	for bone_index in range(skeleton.get_bone_count()):
+		var bone_name := skeleton.get_bone_name(bone_index)
+		var track := animation.add_track(Animation.TYPE_ROTATION_3D)
+		animation.track_set_path(track, NodePath("Astra_Rig_MixamoStyle/Skeleton3D:" + bone_name))
+		var target := Quaternion.IDENTITY
+		if offsets.has(bone_name):
+			target = Quaternion.from_euler(offsets[bone_name])
+		animation.track_insert_key(track, 0.0, Quaternion.IDENTITY)
+		animation.track_insert_key(track, duration * 0.65, target)
+		animation.track_insert_key(track, duration, target)
+	return animation
 
 
 func _build_targets() -> void:
@@ -284,12 +378,122 @@ func _build_hud() -> void:
 	hint_label.add_theme_color_override("font_color", Color("8ea7c2"))
 	root.add_child(hint_label)
 
+	_build_action_panel(root)
+
+
+func _build_action_panel(root: Control) -> void:
+	var panel := PanelContainer.new()
+	panel.name = "PoseActionPanel"
+	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	panel.position = Vector2(-292, 164)
+	panel.custom_minimum_size = Vector2(258, 386)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("0c1525", 0.94), Color("4a6d8d")))
+	root.add_child(panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
+	panel.add_child(column)
+	var heading := Label.new()
+	heading.text = "POSE LIBRARY"
+	heading.add_theme_font_size_override("font_size", 14)
+	heading.add_theme_color_override("font_color", Color("74e5dc"))
+	column.add_child(heading)
+	var subheading := Label.new()
+	subheading.text = "CLICK A BUTTON TO PLAY"
+	subheading.add_theme_font_size_override("font_size", 10)
+	subheading.add_theme_color_override("font_color", Color("8ea7c2"))
+	column.add_child(subheading)
+	var actions := [
+		["STAND  /  IDLE", "Idle"],
+		["WALK", "Walk"],
+		["SIT", "Sit"],
+		["LIE DOWN", "Lie"],
+		["JUMP", "Jump"],
+		["SLASH", "Slash"],
+	]
+	for entry in actions:
+		var button := Button.new()
+		button.text = entry[0]
+		button.custom_minimum_size = Vector2(220, 40)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size", 12)
+		button.add_theme_color_override("font_color", Color("e7f2ff"))
+		button.add_theme_stylebox_override("normal", _button_style(Color("162840"), Color("385571")))
+		button.add_theme_stylebox_override("hover", _button_style(Color("203b57"), Color("69dcd4")))
+		button.add_theme_stylebox_override("pressed", _button_style(Color("275a68"), Color("69dcd4")))
+		button.pressed.connect(_on_action_button.bind(entry[1]))
+		column.add_child(button)
+	var note := Label.new()
+	note.text = "SIT / LIE HOLD THE POSE"
+	note.add_theme_font_size_override("font_size", 9)
+	note.add_theme_color_override("font_color", Color("8ea7c2"))
+	column.add_child(note)
+	action_label = Label.new()
+	action_label.text = "ACTION  //  IDLE"
+	action_label.add_theme_font_size_override("font_size", 10)
+	action_label.add_theme_color_override("font_color", Color("74e5dc"))
+	column.add_child(action_label)
+
+
+func _button_style(background: Color, border: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = background
+	style.border_color = border
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	return style
+
+
+func _on_action_button(action: String) -> void:
+	_set_action(action)
+
+
+func _set_action(action: String) -> void:
+	if action_tween != null and action_tween.is_running():
+		action_tween.kill()
+	action_mode = action
+	action_time = 0.0
+	walk_button_active = action == "Walk"
+	if action == "Walk":
+		animation_player.play("Locomotion")
+	elif action == "Idle":
+		rig.position.y = 0.0
+		animation_player.play("Idle")
+	elif action == "Sit" or action == "Lie":
+		rig.position.y = -0.08 if action == "Sit" else -0.25
+		animation_player.play("Pose_Sit" if action == "Sit" else "Pose_Lie")
+		animation_player.animation_finished.connect(_hold_pose, CONNECT_ONE_SHOT)
+	elif action == "Jump":
+		rig.position.y = 0.0
+		animation_player.play("Pose_Jump")
+		action_time = 0.82
+		action_tween = create_tween()
+		action_tween.tween_property(rig, "position:y", 1.15, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		action_tween.tween_property(rig, "position:y", 0.0, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	elif action == "Slash":
+		_start_attack()
+	if is_instance_valid(action_label):
+		action_label.text = "ACTION  //  " + action.to_upper()
+		if action == "Sit" or action == "Lie":
+			action_label.text += "  //  CLICK STAND TO RESET"
+
+
+func _hold_pose(_animation_name: StringName) -> void:
+	if action_mode == "Sit" or action_mode == "Lie":
+		animation_player.pause()
+
 
 func _start_attack() -> void:
+	action_mode = "Slash"
 	swing_time = SWING_DURATION
 	attack_cooldown = 0.55
 	if animation_player != null:
 		animation_player.play("Melee_Slash")
+	if is_instance_valid(action_label):
+		action_label.text = "ACTION  //  SLASH"
 	if target_nodes.is_empty():
 		return
 	var nearest_index := -1

@@ -19,6 +19,7 @@ Open this folder in Godot 4.7.2 or later, then run the main scene.
 - **WASD** or **arrow keys**: move
 - **Space** or **Enter**: slash at the closest unit in front of Astra
 - **R**: restore all practice units
+- Use the on-screen **Pose Library** buttons to play Stand, Walk, Sit, Lie Down, Jump, and Slash. Sit and Lie Down hold until another pose is selected.
 
 Each unit takes two hits. Walk toward a unit and face it before attacking.
 
