@@ -1,5 +1,7 @@
 .godot/
 .import/
 *.tmp
+*.blend1
+exports/web/*.import
 .tools/
 _animation_source/

@@ -5,12 +5,6 @@ const SWING_DURATION := 0.42
 
 var player: CharacterBody3D
 var rig: Node3D
-var left_arm: Node3D
-var right_arm: Node3D
-var left_leg: Node3D
-var right_leg: Node3D
-var torso: Node3D
-var blade: Node3D
 var animation_player: AnimationPlayer
 var camera: Camera3D
 var swing_time := 0.0
@@ -22,17 +16,6 @@ var status_label: Label
 var hp_label: Label
 var hint_label: Label
 
-var palette := {
-	"ink": Color("10182a"),
-	"armor": Color("293958"),
-	"bright": Color("65e6df"),
-	"gold": Color("f2bd69"),
-	"skin": Color("d9a78c"),
-	"glow": Color("7bf2e3"),
-	"shadow": Color("17243b"),
-}
-
-
 func _ready() -> void:
 	_ready_input_map()
 	_build_arena()
@@ -40,7 +23,6 @@ func _ready() -> void:
 	_build_targets()
 	_build_camera()
 	_build_hud()
-	_build_animation_library()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -50,7 +32,7 @@ func _process(delta: float) -> void:
 		swing_time = maxf(0.0, swing_time - delta)
 	else:
 		var moving := Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"), Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")).length() > 0.1
-		var desired_animation := "Demo/Locomotion" if moving else "Demo/Idle"
+		var desired_animation := "Locomotion" if moving else "Idle"
 		if animation_player.current_animation != desired_animation:
 			animation_player.play(desired_animation)
 		if Input.is_action_just_pressed("attack") and attack_cooldown <= 0.0:
@@ -159,6 +141,10 @@ func _build_arena() -> void:
 
 
 func _build_player() -> void:
+	_build_player_from_blender_model()
+
+
+func _build_player_from_blender_model() -> void:
 	player = CharacterBody3D.new()
 	player.name = "AstraPlayer"
 	player.position = Vector3(0.0, 0.1, 2.0)
@@ -174,43 +160,29 @@ func _build_player() -> void:
 	rig = Node3D.new()
 	rig.name = "Astra_Rig"
 	player.add_child(rig)
-	torso = Node3D.new()
-	torso.name = "Spine"
-	torso.position.y = 1.12
-	rig.add_child(torso)
-	_add_capsule(torso, "Torso_Armor", Vector3(0.0, 0.06, 0.0), Vector3(0.61, 0.74, 0.4), palette.armor)
-	_add_box(torso, "Chest_Plate", Vector3(0.0, 0.18, -0.215), Vector3(0.42, 0.23, 0.075), palette.bright, 0.4)
-	_add_box(torso, "Belt", Vector3(0.0, -0.34, 0.0), Vector3(0.58, 0.12, 0.42), palette.gold, 0.4)
-	_add_box(torso, "Core", Vector3(0.0, -0.04, -0.255), Vector3(0.14, 0.12, 0.055), Color("c7fff4"), 0.4, true)
-
-	var head := Node3D.new()
-	head.name = "Head"
-	head.position.y = 0.66
-	torso.add_child(head)
-	_add_sphere(head, "Face", Vector3(0.0, 0.0, 0.0), Vector3(0.31, 0.34, 0.28), palette.skin)
-	_add_box(head, "Visor", Vector3(0.0, 0.04, -0.245), Vector3(0.39, 0.13, 0.075), palette.ink, 0.5)
-	_add_box(head, "Visor_Glint", Vector3(0.0, 0.045, -0.286), Vector3(0.24, 0.027, 0.012), palette.glow, 0.4, true)
-	_add_sphere(head, "Helmet_Crest", Vector3(0.0, 0.29, 0.0), Vector3(0.23, 0.1, 0.28), palette.gold)
-
-	left_arm = _make_limb(torso, "LeftArm", Vector3(-0.4, 0.26, 0.0), Vector3(0.0, -0.36, 0.0), Vector3(0.17, 0.44, 0.17), palette.armor)
-	right_arm = _make_limb(torso, "RightArm", Vector3(0.4, 0.26, 0.0), Vector3(0.0, -0.36, 0.0), Vector3(0.17, 0.44, 0.17), palette.armor)
-	_add_sphere(left_arm, "Left_Shoulder", Vector3(0.0, 0.1, 0.0), Vector3(0.24, 0.23, 0.22), palette.bright)
-	_add_sphere(right_arm, "Right_Shoulder", Vector3(0.0, 0.1, 0.0), Vector3(0.24, 0.23, 0.22), palette.bright)
-	left_leg = _make_limb(rig, "LeftLeg", Vector3(-0.19, 0.79, 0.0), Vector3(0.0, -0.38, 0.0), Vector3(0.2, 0.47, 0.22), palette.shadow)
-	right_leg = _make_limb(rig, "RightLeg", Vector3(0.19, 0.79, 0.0), Vector3(0.0, -0.38, 0.0), Vector3(0.2, 0.47, 0.22), palette.shadow)
-	_add_box(left_leg, "Boot_L", Vector3(0.0, -0.36, -0.08), Vector3(0.3, 0.16, 0.46), palette.gold, 0.25)
-	_add_box(right_leg, "Boot_R", Vector3(0.0, -0.36, -0.08), Vector3(0.3, 0.16, 0.46), palette.gold, 0.25)
-
-	blade = Node3D.new()
-	blade.name = "TrainingBlade"
-	blade.position = Vector3(0.0, -0.59, -0.02)
-	right_arm.add_child(blade)
-	_add_box(blade, "Grip", Vector3(0.0, 0.0, 0.0), Vector3(0.07, 0.34, 0.07), palette.ink, 0.4)
-	_add_box(blade, "Guard", Vector3(0.0, 0.2, 0.0), Vector3(0.34, 0.07, 0.1), palette.gold, 0.3)
-	_add_box(blade, "Blade", Vector3(0.0, 0.54, 0.0), Vector3(0.16, 0.67, 0.045), Color("bafdf2"), 0.72, true)
-	_add_box(blade, "Blade_Edge", Vector3(0.0, 0.54, -0.03), Vector3(0.035, 0.6, 0.012), palette.bright, 0.5, true)
-
+	var model_scene := load("res://assets/characters/Astra_MK06.glb") as PackedScene
+	if model_scene == null:
+		push_error("Could not load the imported Astra GLB scene.")
+		return
+	var character_model := model_scene.instantiate()
+	character_model.name = "AstraCharacter"
+	rig.add_child(character_model)
+	animation_player = _find_animation_player(character_model)
+	if animation_player == null:
+		push_error("The Astra character is missing its AnimationPlayer.")
+	else:
+		animation_player.play("Idle")
 	_add_ring(rig, Vector3(0.0, 0.08, 0.0), 0.7, 0.75, Color("b4dfdf", 0.36))
+
+
+func _find_animation_player(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_animation_player(child)
+		if found != null:
+			return found
+	return null
 
 
 func _build_targets() -> void:
@@ -219,7 +191,7 @@ func _build_targets() -> void:
 		target.name = "PracticeTarget_%02d" % (i + 1)
 		target.position = Vector3(-4.8 + float(i) * 4.8, 0.0, -3.7)
 		add_child(target)
-		_add_cylinder(target, "Stand", Vector3(0.0, 0.63, 0.0), 0.16, 1.26, palette.shadow)
+		_add_cylinder(target, "Stand", Vector3(0.0, 0.63, 0.0), 0.16, 1.26, Color("17243b"))
 		_add_sphere(target, "Core", Vector3(0.0, 1.44, 0.0), Vector3(0.43, 0.48, 0.38), Color("725d9e"))
 		_add_box(target, "Eye", Vector3(0.0, 1.47, -0.37), Vector3(0.26, 0.07, 0.045), Color("ffcf89"), 0.35, true)
 		_add_ring(target, Vector3(0.0, 1.45, 0.0), 0.48, 0.52, Color("a891ff"))
@@ -313,58 +285,11 @@ func _build_hud() -> void:
 	root.add_child(hint_label)
 
 
-func _build_animation_library() -> void:
-	var player_anim := AnimationPlayer.new()
-	player_anim.name = "CharacterAnimations"
-	rig.add_child(player_anim)
-	animation_player = player_anim
-	var library := AnimationLibrary.new()
-	var idle := Animation.new()
-	idle.resource_name = "Idle"
-	idle.length = 1.2
-	idle.loop_mode = Animation.LOOP_LINEAR
-	_add_rotation_track(idle, "Spine", Vector3(0.0, 0.0, 0.018), 0.6)
-	_add_rotation_track(idle, "Spine/Head", Vector3(0.0, 0.02, 0.0), 0.6)
-	library.add_animation("Idle", idle)
-	var locomotion := Animation.new()
-	locomotion.resource_name = "Locomotion"
-	locomotion.length = 0.7
-	locomotion.loop_mode = Animation.LOOP_LINEAR
-	_add_rotation_track(locomotion, "LeftLeg", Vector3(0.58, 0.0, 0.0), 0.35)
-	_add_rotation_track(locomotion, "RightLeg", Vector3(-0.58, 0.0, 0.0), 0.35)
-	_add_rotation_track(locomotion, "Spine/LeftArm", Vector3(-0.38, 0.0, 0.0), 0.35)
-	library.add_animation("Locomotion", locomotion)
-	var slash := Animation.new()
-	slash.resource_name = "Melee_Slash"
-	slash.length = SWING_DURATION
-	_add_rotation_track(slash, "Spine/RightArm", Vector3(0.0, 0.0, -2.45), 0.24)
-	_add_rotation_track(slash, "Spine", Vector3(0.0, 0.16, -0.12), 0.24)
-	library.add_animation("Melee_Slash", slash)
-	var aim := Animation.new()
-	aim.resource_name = "Shooter_Aim"
-	aim.length = 0.45
-	_add_rotation_track(aim, "Spine/RightArm", Vector3(-1.25, 0.0, -0.1), 0.35)
-	_add_rotation_track(aim, "Spine/LeftArm", Vector3(-1.2, 0.0, 0.1), 0.35)
-	library.add_animation("Shooter_Aim", aim)
-	player_anim.add_animation_library("Demo", library)
-	player_anim.play("Demo/Idle")
-
-
-func _add_rotation_track(anim: Animation, bone: String, value: Vector3, peak: float) -> void:
-	var track := anim.add_track(Animation.TYPE_VALUE)
-	anim.track_set_path(track, NodePath("%s:rotation" % bone))
-	anim.track_insert_key(track, 0.0, Vector3.ZERO)
-	anim.track_insert_key(track, peak, value)
-	if anim.loop_mode == Animation.LOOP_LINEAR:
-		anim.track_insert_key(track, anim.length, Vector3.ZERO)
-	else:
-		anim.track_insert_key(track, anim.length, Vector3.ZERO)
-
-
 func _start_attack() -> void:
 	swing_time = SWING_DURATION
 	attack_cooldown = 0.55
-	animation_player.play("Demo/Melee_Slash")
+	if animation_player != null:
+		animation_player.play("Melee_Slash")
 	if target_nodes.is_empty():
 		return
 	var nearest_index := -1
@@ -438,25 +363,12 @@ func _add_sphere(parent: Node3D, name: String, pos: Vector3, scale: Vector3, col
 	return _add_mesh(parent, name, SphereMesh.new(), pos, scale, color, 0.24)
 
 
-func _add_capsule(parent: Node3D, name: String, pos: Vector3, scale: Vector3, color: Color) -> MeshInstance3D:
-	return _add_mesh(parent, name, CapsuleMesh.new(), pos, scale, color, 0.38)
-
-
 func _add_cylinder(parent: Node3D, name: String, pos: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius * 1.25
 	mesh.height = height
 	return _add_mesh(parent, name, mesh, pos, Vector3.ONE, color, 0.35)
-
-
-func _make_limb(parent: Node3D, name: String, origin: Vector3, mesh_center: Vector3, mesh_scale: Vector3, color: Color) -> Node3D:
-	var pivot := Node3D.new()
-	pivot.name = name
-	pivot.position = origin
-	parent.add_child(pivot)
-	_add_capsule(pivot, "%s_Geo" % name, mesh_center, mesh_scale, color)
-	return pivot
 
 
 func _add_ring(parent: Node3D, pos: Vector3, inner: float, outer: float, color: Color) -> void:

@@ -4,11 +4,12 @@ A small Godot 4 project for the character design and animation exercise. It open
 
 ## What is included
 
-- **Astra MK-06**, a custom low-poly humanoid assembled from meshes in Godot, with a helmet, luminous chest core, armor, boots, and a training blade.
-- A `CharacterBody3D` player with idle, locomotion, melee slash, and shooter aim animations in an `AnimationPlayer` library.
+- **Astra MK-06**, a custom low-poly humanoid modeled and rigged in Blender, with a helmet, luminous chest core, armor, boots, and a training blade. The editable `.blend` source is included.
+- A `CharacterBody3D` player that loads the rigged GLB and its idle, locomotion, melee slash, and shooter aim actions in an `AnimationPlayer`.
 - A training arena with three practice units, two-hit targets, a status HUD, and a reset control.
 - The Mixamo BoneMap and the Melee/Shooter animation libraries named in the assignment, kept under `assets/` for use with compatible Mixamo-rigged models.
-- A three-view character concept sheet at `art/astra_character_sheet.png`.
+- A three-view character concept sheet and a Blender render at `art/astra_character_sheet.png` and `art/astra_blender_render.png`.
+- The Blender source builder at `art/create_astra_blender.py` (run it with Blender 5.2 to regenerate the `.blend`, GLB, and render).
 - A web export at `exports/web/index.html`.
 
 ## Open and play
@@ -35,4 +36,6 @@ The project includes a `Web` export preset. Install the matching Godot export te
 - `scripts/arena.gd` — arena, character, controls, animations, and HUD
 - `assets/bone_maps/` — Mixamo bone map
 - `assets/libraries/Humanoid/` — melee and shooter libraries
+- `assets/characters/Astra_MK06.glb` — rigged character used in the demo
+- `assets/characters/source_blender/Astra_MK06.blend` — editable Blender source (ignored by Godot's importer)
 - `export_presets.cfg` — web export configuration
