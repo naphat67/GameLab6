@@ -384,9 +384,10 @@ func _build_hud() -> void:
 func _build_action_panel(root: Control) -> void:
 	var panel := PanelContainer.new()
 	panel.name = "PoseActionPanel"
-	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	panel.position = Vector2(-292, 164)
-	panel.custom_minimum_size = Vector2(258, 386)
+	panel.custom_minimum_size = Vector2(272, 430)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_KEEP_SIZE)
+	panel.position = Vector2(-304, 150)
+	panel.size = Vector2(272, 430)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color("0c1525", 0.94), Color("4a6d8d")))
 	root.add_child(panel)
 	var column := VBoxContainer.new()
