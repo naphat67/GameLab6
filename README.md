@@ -7,7 +7,7 @@ A small Godot 4 project for the character design and animation exercise. It open
 - **Astra MK-06**, a custom low-poly humanoid modeled and rigged in Blender, with a helmet, luminous chest core, armor, boots, and a training blade. The editable `.blend` source is included.
 - A `CharacterBody3D` player that loads the rigged GLB and its idle, locomotion, melee slash, and shooter aim actions in an `AnimationPlayer`.
 - A training arena with three practice units, two-hit targets, a status HUD, and a reset control.
-- The Mixamo BoneMap and the Melee/Shooter animation libraries named in the assignment, kept under `assets/` for use with compatible Mixamo-rigged models.
+- The Mixamo BoneMap and both Melee/Shooter libraries named in the assignment. The demo plays the Blender-authored actions; the supplied libraries remain available for a compatible Godot Humanoid-profile skeleton.
 - A three-view character concept sheet and a Blender render at `art/astra_character_sheet.png` and `art/astra_blender_render.png`.
 - The Blender source builder at `art/create_astra_blender.py` (run it with Blender 5.2 to regenerate the `.blend`, GLB, and render).
 - A web export at `exports/web/index.html`.
