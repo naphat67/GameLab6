@@ -1,0 +1,512 @@
+extends Node3D
+
+const PLAYER_SPEED := 4.1
+const SWING_DURATION := 0.42
+
+var player: CharacterBody3D
+var rig: Node3D
+var left_arm: Node3D
+var right_arm: Node3D
+var left_leg: Node3D
+var right_leg: Node3D
+var torso: Node3D
+var blade: Node3D
+var animation_player: AnimationPlayer
+var camera: Camera3D
+var swing_time := 0.0
+var attack_cooldown := 0.0
+var target_nodes: Array[Node3D] = []
+var target_hp: Array[int] = []
+var hit_count := 0
+var status_label: Label
+var hp_label: Label
+var hint_label: Label
+
+var palette := {
+	"ink": Color("10182a"),
+	"armor": Color("293958"),
+	"bright": Color("65e6df"),
+	"gold": Color("f2bd69"),
+	"skin": Color("d9a78c"),
+	"glow": Color("7bf2e3"),
+	"shadow": Color("17243b"),
+}
+
+
+func _ready() -> void:
+	_ready_input_map()
+	_build_arena()
+	_build_player()
+	_build_targets()
+	_build_camera()
+	_build_hud()
+	_build_animation_library()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _process(delta: float) -> void:
+	attack_cooldown = maxf(0.0, attack_cooldown - delta)
+	if swing_time > 0.0:
+		swing_time = maxf(0.0, swing_time - delta)
+	else:
+		var moving := Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"), Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")).length() > 0.1
+		var desired_animation := "Demo/Locomotion" if moving else "Demo/Idle"
+		if animation_player.current_animation != desired_animation:
+			animation_player.play(desired_animation)
+		if Input.is_action_just_pressed("attack") and attack_cooldown <= 0.0:
+			_start_attack()
+	_update_hud()
+
+
+func _physics_process(_delta: float) -> void:
+	var input_dir := Vector3(
+		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
+		0.0,
+		Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")
+	)
+	if input_dir.length() > 1.0:
+		input_dir = input_dir.normalized()
+	player.velocity.x = input_dir.x * PLAYER_SPEED
+	player.velocity.z = input_dir.z * PLAYER_SPEED
+	if input_dir.length() > 0.08:
+		rig.rotation.y = lerp_angle(rig.rotation.y, atan2(input_dir.x, -input_dir.z), 0.18)
+	player.move_and_slide()
+	player.global_position.x = clampf(player.global_position.x, -8.0, 8.0)
+	player.global_position.z = clampf(player.global_position.z, -6.0, 6.0)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
+		_reset_targets()
+
+
+func _build_arena() -> void:
+	var world := WorldEnvironment.new()
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color("111b36")
+	sky_mat.sky_horizon_color = Color("334967")
+	sky_mat.ground_bottom_color = Color("10182a")
+	sky_mat.ground_horizon_color = Color("334967")
+	sky.sky_material = sky_mat
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color("93a9c8")
+	environment.ambient_light_energy = 0.6
+	world.environment = environment
+	add_child(world)
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-44, -28, 0)
+	sun.light_color = Color("d6e5ff")
+	sun.light_energy = 1.5
+	sun.shadow_enabled = true
+	add_child(sun)
+
+	var key := OmniLight3D.new()
+	key.position = Vector3(0.0, 3.2, -2.0)
+	key.light_color = Color("5de7dc")
+	key.light_energy = 1.6
+	key.omni_range = 8.0
+	add_child(key)
+
+	var ground := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(30.0, 30.0)
+	ground.mesh = plane
+	ground.material_override = _mat(Color("18243b"), 0.15, 0.7)
+	ground.position.y = -0.04
+	add_child(ground)
+
+	for i in range(-7, 8):
+		var line := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.018, 0.009, 30.0)
+		line.mesh = mesh
+		line.material_override = _mat(Color("37506b"), 0.18, 0.35)
+		line.position = Vector3(float(i) * 2.0, -0.025, 0.0)
+		add_child(line)
+		var cross := MeshInstance3D.new()
+		var cross_mesh := BoxMesh.new()
+		cross_mesh.size = Vector3(30.0, 0.009, 0.018)
+		cross.mesh = cross_mesh
+		cross.material_override = line.material_override
+		cross.position = Vector3(0.0, -0.024, float(i) * 2.0)
+		add_child(cross)
+
+	var dais := MeshInstance3D.new()
+	var dais_mesh := CylinderMesh.new()
+	dais_mesh.top_radius = 1.9
+	dais_mesh.bottom_radius = 2.05
+	dais_mesh.height = 0.18
+	dais.mesh = dais_mesh
+	dais.position = Vector3(0.0, 0.03, 0.0)
+	dais.material_override = _mat(Color("243854"), 0.4, 0.38)
+	add_child(dais)
+	var ring := MeshInstance3D.new()
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 1.86
+	ring_mesh.outer_radius = 1.9
+	ring.mesh = ring_mesh
+	ring.position.y = 0.13
+	ring.material_override = _mat(Color("69dcd4"), 0.28, 0.34, true)
+	add_child(ring)
+	_add_text_3d("ASTRA // TRAINING DECK", Vector3(-5.0, 0.03, -4.8), 0.2, Color("84a6c4"))
+
+
+func _build_player() -> void:
+	player = CharacterBody3D.new()
+	player.name = "AstraPlayer"
+	player.position = Vector3(0.0, 0.1, 2.0)
+	add_child(player)
+	var collision := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.4
+	capsule.height = 1.8
+	collision.shape = capsule
+	collision.position.y = 0.9
+	player.add_child(collision)
+
+	rig = Node3D.new()
+	rig.name = "Astra_Rig"
+	player.add_child(rig)
+	torso = Node3D.new()
+	torso.name = "Spine"
+	torso.position.y = 1.12
+	rig.add_child(torso)
+	_add_capsule(torso, "Torso_Armor", Vector3(0.0, 0.06, 0.0), Vector3(0.61, 0.74, 0.4), palette.armor)
+	_add_box(torso, "Chest_Plate", Vector3(0.0, 0.18, -0.215), Vector3(0.42, 0.23, 0.075), palette.bright, 0.4)
+	_add_box(torso, "Belt", Vector3(0.0, -0.34, 0.0), Vector3(0.58, 0.12, 0.42), palette.gold, 0.4)
+	_add_box(torso, "Core", Vector3(0.0, -0.04, -0.255), Vector3(0.14, 0.12, 0.055), Color("c7fff4"), 0.4, true)
+
+	var head := Node3D.new()
+	head.name = "Head"
+	head.position.y = 0.66
+	torso.add_child(head)
+	_add_sphere(head, "Face", Vector3(0.0, 0.0, 0.0), Vector3(0.31, 0.34, 0.28), palette.skin)
+	_add_box(head, "Visor", Vector3(0.0, 0.04, -0.245), Vector3(0.39, 0.13, 0.075), palette.ink, 0.5)
+	_add_box(head, "Visor_Glint", Vector3(0.0, 0.045, -0.286), Vector3(0.24, 0.027, 0.012), palette.glow, 0.4, true)
+	_add_sphere(head, "Helmet_Crest", Vector3(0.0, 0.29, 0.0), Vector3(0.23, 0.1, 0.28), palette.gold)
+
+	left_arm = _make_limb(torso, "LeftArm", Vector3(-0.4, 0.26, 0.0), Vector3(0.0, -0.36, 0.0), Vector3(0.17, 0.44, 0.17), palette.armor)
+	right_arm = _make_limb(torso, "RightArm", Vector3(0.4, 0.26, 0.0), Vector3(0.0, -0.36, 0.0), Vector3(0.17, 0.44, 0.17), palette.armor)
+	_add_sphere(left_arm, "Left_Shoulder", Vector3(0.0, 0.1, 0.0), Vector3(0.24, 0.23, 0.22), palette.bright)
+	_add_sphere(right_arm, "Right_Shoulder", Vector3(0.0, 0.1, 0.0), Vector3(0.24, 0.23, 0.22), palette.bright)
+	left_leg = _make_limb(rig, "LeftLeg", Vector3(-0.19, 0.79, 0.0), Vector3(0.0, -0.38, 0.0), Vector3(0.2, 0.47, 0.22), palette.shadow)
+	right_leg = _make_limb(rig, "RightLeg", Vector3(0.19, 0.79, 0.0), Vector3(0.0, -0.38, 0.0), Vector3(0.2, 0.47, 0.22), palette.shadow)
+	_add_box(left_leg, "Boot_L", Vector3(0.0, -0.36, -0.08), Vector3(0.3, 0.16, 0.46), palette.gold, 0.25)
+	_add_box(right_leg, "Boot_R", Vector3(0.0, -0.36, -0.08), Vector3(0.3, 0.16, 0.46), palette.gold, 0.25)
+
+	blade = Node3D.new()
+	blade.name = "TrainingBlade"
+	blade.position = Vector3(0.0, -0.59, -0.02)
+	right_arm.add_child(blade)
+	_add_box(blade, "Grip", Vector3(0.0, 0.0, 0.0), Vector3(0.07, 0.34, 0.07), palette.ink, 0.4)
+	_add_box(blade, "Guard", Vector3(0.0, 0.2, 0.0), Vector3(0.34, 0.07, 0.1), palette.gold, 0.3)
+	_add_box(blade, "Blade", Vector3(0.0, 0.54, 0.0), Vector3(0.16, 0.67, 0.045), Color("bafdf2"), 0.72, true)
+	_add_box(blade, "Blade_Edge", Vector3(0.0, 0.54, -0.03), Vector3(0.035, 0.6, 0.012), palette.bright, 0.5, true)
+
+	_add_ring(rig, Vector3(0.0, 0.08, 0.0), 0.7, 0.75, Color("b4dfdf", 0.36))
+
+
+func _build_targets() -> void:
+	for i in range(3):
+		var target := Node3D.new()
+		target.name = "PracticeTarget_%02d" % (i + 1)
+		target.position = Vector3(-4.8 + float(i) * 4.8, 0.0, -3.7)
+		add_child(target)
+		_add_cylinder(target, "Stand", Vector3(0.0, 0.63, 0.0), 0.16, 1.26, palette.shadow)
+		_add_sphere(target, "Core", Vector3(0.0, 1.44, 0.0), Vector3(0.43, 0.48, 0.38), Color("725d9e"))
+		_add_box(target, "Eye", Vector3(0.0, 1.47, -0.37), Vector3(0.26, 0.07, 0.045), Color("ffcf89"), 0.35, true)
+		_add_ring(target, Vector3(0.0, 1.45, 0.0), 0.48, 0.52, Color("a891ff"))
+		_add_text_3d("UNIT 0%d" % (i + 1), target.position + Vector3(-0.45, 2.1, 0.0), 0.13, Color("aabbd4"))
+		target_nodes.append(target)
+		target_hp.append(2)
+		
+	var start_marker := MeshInstance3D.new()
+	var marker_mesh := CylinderMesh.new()
+	marker_mesh.top_radius = 0.49
+	marker_mesh.bottom_radius = 0.49
+	marker_mesh.height = 0.015
+	start_marker.mesh = marker_mesh
+	start_marker.position = Vector3(0.0, 0.14, 2.0)
+	start_marker.material_override = _mat(Color("67dacf", 0.34), 0.1, 0.38, true)
+	add_child(start_marker)
+
+
+func _build_camera() -> void:
+	camera = Camera3D.new()
+	camera.name = "DemoCamera"
+	camera.position = Vector3(7.6, 7.1, 11.2)
+	camera.fov = 43.0
+	camera.current = true
+	add_child(camera)
+	camera.look_at(Vector3(0.0, 1.0, -0.35), Vector3.UP)
+
+
+func _build_hud() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+
+	var title := Label.new()
+	title.text = "A S T R A  /  CHARACTER LAB"
+	title.position = Vector2(36, 26)
+	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_color", Color("ecf7ff"))
+	root.add_child(title)
+	var sub := Label.new()
+	sub.text = "HUMANOID RIG  •  MELEE LIBRARY  •  TRAINING BUILD"
+	sub.position = Vector2(38, 57)
+	sub.add_theme_font_size_override("font_size", 11)
+	sub.add_theme_color_override("font_color", Color("7f9ab7"))
+	root.add_child(sub)
+
+	var panel := PanelContainer.new()
+	panel.position = Vector2(32, 110)
+	panel.custom_minimum_size = Vector2(252, 116)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("0c1525", 0.88), Color("35516c")))
+	root.add_child(panel)
+	var stats := VBoxContainer.new()
+	stats.add_theme_constant_override("separation", 9)
+	panel.add_child(stats)
+	var tag := Label.new()
+	tag.text = "OPERATOR PROFILE"
+	tag.add_theme_font_size_override("font_size", 11)
+	tag.add_theme_color_override("font_color", Color("74e5dc"))
+	stats.add_child(tag)
+	var name := Label.new()
+	name.text = "ASTRA / MK-06"
+	name.add_theme_font_size_override("font_size", 20)
+	name.add_theme_color_override("font_color", Color("f0f6ff"))
+	stats.add_child(name)
+	hp_label = Label.new()
+	hp_label.text = "TARGETS  03 / 03     HITS  00"
+	hp_label.add_theme_font_size_override("font_size", 12)
+	hp_label.add_theme_color_override("font_color", Color("acbfd5"))
+	stats.add_child(hp_label)
+
+	var bottom := PanelContainer.new()
+	bottom.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	bottom.position = Vector2(32, -84)
+	bottom.custom_minimum_size = Vector2(450, 52)
+	bottom.add_theme_stylebox_override("panel", _panel_style(Color("0c1525", 0.88), Color("35516c")))
+	root.add_child(bottom)
+	status_label = Label.new()
+	status_label.text = "WASD / ARROWS  MOVE    •    SPACE / ENTER  SLASH    •    R  RESET"
+	status_label.add_theme_font_size_override("font_size", 12)
+	status_label.add_theme_color_override("font_color", Color("d0deef"))
+	bottom.add_child(status_label)
+
+	hint_label = Label.new()
+	hint_label.text = "GODOT 4.7  |  WEB READY  |  CLICK GAME WINDOW FOR INPUT"
+	hint_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint_label.position = Vector2(-435, -37)
+	hint_label.add_theme_font_size_override("font_size", 10)
+	hint_label.add_theme_color_override("font_color", Color("8ea7c2"))
+	root.add_child(hint_label)
+
+
+func _build_animation_library() -> void:
+	var player_anim := AnimationPlayer.new()
+	player_anim.name = "CharacterAnimations"
+	rig.add_child(player_anim)
+	animation_player = player_anim
+	var library := AnimationLibrary.new()
+	var idle := Animation.new()
+	idle.resource_name = "Idle"
+	idle.length = 1.2
+	idle.loop_mode = Animation.LOOP_LINEAR
+	_add_rotation_track(idle, "Spine", Vector3(0.0, 0.0, 0.018), 0.6)
+	_add_rotation_track(idle, "Spine/Head", Vector3(0.0, 0.02, 0.0), 0.6)
+	library.add_animation("Idle", idle)
+	var locomotion := Animation.new()
+	locomotion.resource_name = "Locomotion"
+	locomotion.length = 0.7
+	locomotion.loop_mode = Animation.LOOP_LINEAR
+	_add_rotation_track(locomotion, "LeftLeg", Vector3(0.58, 0.0, 0.0), 0.35)
+	_add_rotation_track(locomotion, "RightLeg", Vector3(-0.58, 0.0, 0.0), 0.35)
+	_add_rotation_track(locomotion, "Spine/LeftArm", Vector3(-0.38, 0.0, 0.0), 0.35)
+	library.add_animation("Locomotion", locomotion)
+	var slash := Animation.new()
+	slash.resource_name = "Melee_Slash"
+	slash.length = SWING_DURATION
+	_add_rotation_track(slash, "Spine/RightArm", Vector3(0.0, 0.0, -2.45), 0.24)
+	_add_rotation_track(slash, "Spine", Vector3(0.0, 0.16, -0.12), 0.24)
+	library.add_animation("Melee_Slash", slash)
+	var aim := Animation.new()
+	aim.resource_name = "Shooter_Aim"
+	aim.length = 0.45
+	_add_rotation_track(aim, "Spine/RightArm", Vector3(-1.25, 0.0, -0.1), 0.35)
+	_add_rotation_track(aim, "Spine/LeftArm", Vector3(-1.2, 0.0, 0.1), 0.35)
+	library.add_animation("Shooter_Aim", aim)
+	player_anim.add_animation_library("Demo", library)
+	player_anim.play("Demo/Idle")
+
+
+func _add_rotation_track(anim: Animation, bone: String, value: Vector3, peak: float) -> void:
+	var track := anim.add_track(Animation.TYPE_VALUE)
+	anim.track_set_path(track, NodePath("%s:rotation" % bone))
+	anim.track_insert_key(track, 0.0, Vector3.ZERO)
+	anim.track_insert_key(track, peak, value)
+	if anim.loop_mode == Animation.LOOP_LINEAR:
+		anim.track_insert_key(track, anim.length, Vector3.ZERO)
+	else:
+		anim.track_insert_key(track, anim.length, Vector3.ZERO)
+
+
+func _start_attack() -> void:
+	swing_time = SWING_DURATION
+	attack_cooldown = 0.55
+	animation_player.play("Demo/Melee_Slash")
+	if target_nodes.is_empty():
+		return
+	var nearest_index := -1
+	var nearest_distance := 2.65
+	for i in range(target_nodes.size()):
+		if target_hp[i] <= 0:
+			continue
+		var target_position := target_nodes[i].global_position
+		var distance := Vector2(target_position.x - player.global_position.x, target_position.z - player.global_position.z).length()
+		var direction := Vector2(target_position.x - player.global_position.x, target_position.z - player.global_position.z).normalized()
+		var facing := Vector2(sin(rig.rotation.y), -cos(rig.rotation.y))
+		if distance < nearest_distance and facing.dot(direction) > 0.12:
+			nearest_index = i
+			nearest_distance = distance
+	if nearest_index >= 0:
+		target_hp[nearest_index] -= 1
+		hit_count += 1
+		if target_hp[nearest_index] <= 0:
+			target_nodes[nearest_index].visible = false
+		if is_instance_valid(status_label):
+			status_label.text = "DIRECT HIT   //   TRAINING UNIT %02d" % (nearest_index + 1)
+
+
+func _reset_targets() -> void:
+	hit_count = 0
+	for i in range(target_nodes.size()):
+		target_hp[i] = 2
+		target_nodes[i].visible = true
+
+
+func _update_hud() -> void:
+	if not is_instance_valid(hp_label):
+		return
+	var remaining := 0
+	for hp in target_hp:
+		if hp > 0:
+			remaining += 1
+	hp_label.text = "TARGETS  %02d / 03     HITS  %02d" % [remaining, hit_count]
+
+
+func _mat(color: Color, metallic := 0.0, roughness := 0.5, emission := false) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.metallic = metallic
+	m.roughness = roughness
+	if emission:
+		m.emission_enabled = true
+		m.emission = color
+		m.emission_energy_multiplier = 0.65
+	return m
+
+
+func _add_mesh(parent: Node3D, name: String, mesh: PrimitiveMesh, position: Vector3, scale: Vector3, color: Color, metallic := 0.0, emission := false) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.name = name
+	instance.mesh = mesh
+	instance.position = position
+	instance.scale = scale
+	instance.material_override = _mat(color, metallic, 0.34, emission)
+	parent.add_child(instance)
+	return instance
+
+
+func _add_box(parent: Node3D, name: String, pos: Vector3, size: Vector3, color: Color, metallic := 0.0, emission := false) -> MeshInstance3D:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	return _add_mesh(parent, name, mesh, pos, Vector3.ONE, color, metallic, emission)
+
+
+func _add_sphere(parent: Node3D, name: String, pos: Vector3, scale: Vector3, color: Color) -> MeshInstance3D:
+	return _add_mesh(parent, name, SphereMesh.new(), pos, scale, color, 0.24)
+
+
+func _add_capsule(parent: Node3D, name: String, pos: Vector3, scale: Vector3, color: Color) -> MeshInstance3D:
+	return _add_mesh(parent, name, CapsuleMesh.new(), pos, scale, color, 0.38)
+
+
+func _add_cylinder(parent: Node3D, name: String, pos: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius * 1.25
+	mesh.height = height
+	return _add_mesh(parent, name, mesh, pos, Vector3.ONE, color, 0.35)
+
+
+func _make_limb(parent: Node3D, name: String, origin: Vector3, mesh_center: Vector3, mesh_scale: Vector3, color: Color) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = name
+	pivot.position = origin
+	parent.add_child(pivot)
+	_add_capsule(pivot, "%s_Geo" % name, mesh_center, mesh_scale, color)
+	return pivot
+
+
+func _add_ring(parent: Node3D, pos: Vector3, inner: float, outer: float, color: Color) -> void:
+	var ring := MeshInstance3D.new()
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = inner
+	mesh.outer_radius = outer
+	ring.mesh = mesh
+	ring.position = pos
+	ring.material_override = _mat(color, 0.3, 0.3, color.a < 1.0)
+	parent.add_child(ring)
+
+
+func _add_text_3d(text: String, pos: Vector3, size: float, color: Color) -> void:
+	var label := Label3D.new()
+	label.text = text
+	label.position = pos
+	label.font_size = 24
+	label.pixel_size = size / 24.0
+	label.modulate = color
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(label)
+
+
+func _panel_style(background: Color, border: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = background
+	style.border_color = border
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 16
+	style.content_margin_right = 16
+	style.content_margin_top = 13
+	style.content_margin_bottom = 12
+	return style
+
+
+func _ready_input_map() -> void:
+	var bindings := {
+		"move_forward": [KEY_W, KEY_UP],
+		"move_back": [KEY_S, KEY_DOWN],
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"attack": [KEY_SPACE, KEY_ENTER],
+	}
+	for action in bindings:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		for key in bindings[action]:
+			var event := InputEventKey.new()
+			event.physical_keycode = key
+			InputMap.action_add_event(action, event)
+

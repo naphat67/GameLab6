@@ -1,0 +1,5 @@
+.godot/
+.import/
+*.tmp
+.tools/
+_animation_source/
