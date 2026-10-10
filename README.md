@@ -39,3 +39,7 @@ The project includes a `Web` export preset. Install the matching Godot export te
 - `assets/characters/Astra_MK06.glb` — rigged character used in the demo
 - `assets/characters/source_blender/Astra_MK06.blend` — editable Blender source (ignored by Godot's importer)
 - `export_presets.cfg` — web export configuration
+
+## Play in your browser
+
+GitHub Pages serves the Godot Web export from the docs folder. Once Pages finishes publishing, open [Astra Character Lab](https://naphat67.github.io/GameLab6/). The matching export files are kept in the exports/web folder for Godot project use.
