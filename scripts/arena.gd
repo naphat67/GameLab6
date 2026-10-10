@@ -255,14 +255,14 @@ func _create_pose_animations() -> void:
 		"mixamorig_RightLeg": Vector3(0.72, 0.0, 0.0),
 		"mixamorig_LeftArm": Vector3(-1.7, 0.0, -0.25),
 		"mixamorig_RightArm": Vector3(-1.7, 0.0, 0.25),
-	}, 0.72)
+	}, 0.72, true)
 	if library != null:
 		library.add_animation("Pose_Sit", sit)
 		library.add_animation("Pose_Lie", lie)
 		library.add_animation("Pose_Jump", jump)
 
 
-func _build_pose_animation(animation_name: String, offsets: Dictionary, duration: float) -> Animation:
+func _build_pose_animation(animation_name: String, offsets: Dictionary, duration: float, reset_at_end := false) -> Animation:
 	var animation := Animation.new()
 	animation.resource_name = animation_name
 	animation.length = duration
@@ -275,7 +275,7 @@ func _build_pose_animation(animation_name: String, offsets: Dictionary, duration
 			target = Quaternion.from_euler(offsets[bone_name])
 		animation.track_insert_key(track, 0.0, Quaternion.IDENTITY)
 		animation.track_insert_key(track, duration * 0.65, target)
-		animation.track_insert_key(track, duration, target)
+		animation.track_insert_key(track, duration, Quaternion.IDENTITY if reset_at_end else target)
 	return animation
 
 
